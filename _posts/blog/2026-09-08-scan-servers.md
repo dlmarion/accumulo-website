@@ -5,11 +5,11 @@ author: Dave Marion
 
 ## Introduction
 
-Apache Accumulo Tablet Servers perform many tablet maintenance functions (read, write, compacting, merging, splitting, etc.). Since Tablet Servers typically host many tablets these tablet maintenance functions can be queued waiting for resources or interrupted when the Manager decides to migrate a tablet or if the Tablet Server process dies. Scan Servers, like Compactors, move processing out of the Tablet Server to help mitigate some of these situations. A Scan Server is an optional, read-only Accumulo process that handles eventually consistent scans independently of Tablet Servers. Administrators can deploy and scale Scan Servers according to scan demand, providing additional read capacity without adding the responsibilities of hosting tablets or processing writes. Beginning in Accumulo 2.1.5, Scan Servers can also scan offline tables without bringing those tables online.
+Apache Accumulo Tablet Servers perform many tablet maintenance functions (read, write, compacting, merging, splitting, etc.). Since Tablet Servers typically host many tablets these tablet maintenance functions can be queued waiting for resources or interrupted when the Manager decides to migrate a tablet or if the Tablet Server process dies. Scan Servers, like Compactors, move processing out of the Tablet Server to help mitigate some of these situations. A Scan Server is an optional, read-only Accumulo process that handles eventually consistent scans independently of Tablet Servers. Administrators can deploy and scale Scan Servers according to scan demand, providing additional read capacity without adding the responsibilities of hosting tablets or processing writes. Beginning in Accumulo 2.1.5, Scan Servers can also scan offline tables.
 
 Using Scan Servers comes with an explicit consistency tradeoff. Tablet Servers can serve immediate scans using both persisted files and data still held in memory. Scan Servers instead read persisted RFiles, so an eventual scan may not include recent writes that have not yet been flushed. Cached tablet metadata can also affect when newly created files become visible. Scan Servers are therefore a strong fit for reporting, historical analysis, and background processing, but not for operations that require read-after-write consistency.
 
-This post explains how Scan Servers work, how to configure them on the server and client sides, and how to use them from Java, the Accumulo shell, and distributed processing jobs. It begins with the feature model introduced in Accumulo 2.1.0 and concludes with the behavioral and configuration changes to consider when using Accumulo 4.0.0.
+This post explains how Scan Servers work and how to configure them on the server and client sides. It begins with the feature model introduced in Accumulo 2.1.0 and concludes with the behavioral and configuration changes to consider when using Accumulo 4.0.0.
 
 ## How Scan Servers Work
 
@@ -45,14 +45,14 @@ The group is a label used by clients when selecting servers. It is not a persist
 
 ```yaml
 sserver:
-  - analytics:
-    - scan1
-    - scan2
+  - long_scans_group:
+    - host1
+    - host2
 
 sservers_per_host: 2
 ```
 
-This example starts two Scan Server processes on each host assigned to the `analytics` group. Running multiple processes can increase concurrency, but each process has its own heap and caches, so the count should be chosen together with the per-process memory settings.
+This example starts two Scan Server processes on each host assigned to the `long_scans_group` group. Running multiple processes can increase concurrency, but each process has its own heap and caches, so the count should be chosen together with the per-process memory settings.
 
 ### Important Server Properties
 
@@ -73,22 +73,7 @@ The initial Scan Server configuration used the `sserver.*` property prefix. The 
 | `sserver.scan.executors.meta.threads` | `8` | Threads for metadata scans |
 | `sserver.scan.reference.expiration` | `5m` | Time an unused file reference is retained |
 
-Cache percentages are based on the Scan Server process's maximum heap. A deployment should leave enough memory for scan execution, RPC handling, and other process state instead of assigning the entire heap to caches.
-
-The RPC thread pool receives client requests, but scan executor threads control how many scans can execute concurrently. The default and metadata executors are enough to get started. Administrators can also define an executor in the Scan Server configuration:
-
-```properties
-sserver.scan.executors.analytics.threads=32
-sserver.scan.executors.analytics.priority=5
-```
-
-Defining the executor does not route work to it. Configure each table's `SimpleScanDispatcher` separately:
-
-```properties
-table.scan.dispatcher.opts.executor.analytics=analytics
-```
-
-This table property sends scans carrying `scan_type=analytics` to the named executor when the scan executes on a Scan Server. It does not control Tablet Server fallback; the client selector controls that decision. An executor may also specify a `ScanPrioritizer` and prioritizer options, making it possible to separate scan classes or prioritize Scan Server work.
+The RPC thread pool receives client requests, but scan executor threads control how many scans can execute concurrently (see [scan-executors][https://accumulo.apache.org/docs/2.x/administration/scan-executors]).
 
 ### Controlling Latency
 
@@ -105,7 +90,7 @@ scan.server.selector.impl=org.apache.accumulo.core.spi.scan.ConfigurableScanServ
 scan.server.selector.opts.profiles=[...]
 ```
 
-The `profiles` value is a JSON array. Exactly one profile must set `isDefault` to `true`; in 2.1.0, place that default profile first in the array. Other profiles can be activated by setting a `scan_type` execution hint on a scanner. Each profile can identify a Scan Server group and define one or more attempt plans.
+The `profiles` value is a JSON array. Exactly one profile must set `isDefault` to `true`. Other profiles can be activated by setting a `scan_type` execution hint on a scanner. Each profile can identify a Scan Server group and define one or more attempt plans.
 
 ```json
 [
@@ -131,24 +116,19 @@ The `profiles` value is a JSON array. Exactly one profile must set `isDefault` t
 ]
 ```
 
-Within an attempt plan, `servers` is either a positive count or a percentage of the available servers. The selector hashes the tablet to a candidate set and chooses a server from that set. `busyTimeout` limits how long a request may remain queued in the Scan Server before it begins executing. If the `busyTimeout` threshold is met, then the Scan Server returns a busy signal to the client so that it can select a different Scan Server. An optional `salt` changes the hash for a later attempt so that the client can consider a different candidate set.
+Within an attempt plan, `servers` is either a positive count or a percentage of the available Scan Servers in the group. The client-side selector hashes the tablet to a candidate set and chooses a server from that set. `busyTimeout` limits how long a request may remain queued in the Scan Server before it begins executing. If the `busyTimeout` threshold is met, then the Scan Server returns a busy signal to the client so that it can select a different Scan Server. An optional `salt` changes the hash for a later attempt so that the client can consider a different candidate set.
 
-The application activates the second profile with an execution hint:
-
-```java
-scanner.setExecutionHints(
-    Map.of("scan_type", "analytics"));
-```
 ## Use with offline tables
 
 Accumulo 2.1.5 enabled Scan Servers to work with offline tables. The later section on Accumulo 4.0 discusses an important compatibility change for this feature.  
+
 ## Use with specific tables
 
-Accumulo 2.1.5 added the property `sserver.scan.allowed.tables.group.<group>`. Its default value permits user tables outside the `accumulo` namespace. The later section on Accumulo 4.0 discusses an important compatibility change for this feature.
+Accumulo 2.1.5 added the property `sserver.scan.allowed.tables.group.<group>`. Its default value permits user tables outside the `accumulo` namespace. Use caution if allowing Scan Servers to be used with tables in the `accumulo` namespace, as the information will be stale. The later section on Accumulo 4.0 discusses an important compatibility change for this feature.
 
 ## Changes Through Accumulo 4.0.0
 
-The scanner-facing API remains unchanged, but the operational model has evolved since 2.1.0. Some changes arrived in maintenance releases, others in Accumulo 3, and others are new in the current 4.0.0-SNAPSHOT. Looking at them together is useful when planning an upgrade from the original implementation.
+The scanner-facing API remains unchanged, but client configuration and behavior, and server-side options have changed.
 
 ### No-Server Behavior and Selection
 
@@ -194,13 +174,13 @@ sserver:
   default:
     servers_per_host: 2
     hosts:
-      - scan1
-      - scan2
+      - host1
+      - host2
   highmem:
     servers_per_host: 1
     hosts:
-      - highmem1
-      - highmem2
+      - host3
+      - host4
 ```
 
 The cluster script can also start only the selected group:
@@ -208,8 +188,6 @@ The cluster script can also start only the selected group:
 ```bash
 accumulo-cluster start --sservers=highmem
 ```
-
-The YAML file controls where processes run and how many are launched. It does not create the resource group or its persistent configuration. For properties eligible for group configuration, the resource-group value overrides the parent system or site value.
 
 A client profile still uses the `group` field, but that value now identifies a resource group:
 
@@ -261,22 +239,19 @@ The 4.0.0 `sserver.port.client` value is a range, so the old `sserver.port.searc
 
 Background tablet-metadata refresh was added in 2.1.3. With the current defaults, a cache hit after 75 percent of the five-minute expiration interval starts an asynchronous refresh for future scans. The scan that triggers that work can still use the existing cached value, so this mechanism improves freshness without guaranteeing it.
 
-Table filtering first appeared in 2.1.5 as `sserver.scan.allowed.tables.group.<group>`. Accumulo 4.0.0 replaces that group-suffixed property with `sserver.scan.allowed.tables` in the resource group's effective configuration. The old form remains as a deprecated compatibility property. The expression matches a fully qualified name such as `sales.events`, and the default expression rejects tables in the `accumulo` namespace. An invalid expression denies all tables for the affected group.
+Table filtering first appeared in 2.1.5 as `sserver.scan.allowed.tables.group.<group>`. Accumulo 4.0.0 replaces that group-suffixed property with `sserver.scan.allowed.tables` in the resource group's effective configuration.
 
-Accumulo 4.0.0 also allows Scan Servers to perform the sorting phase of write-ahead log recovery. The default `sserver.wal.sort.concurrent.max=2` permits two concurrent sorts; a value below one disables the work. Scan Servers do not host recovering tablets or replay their mutations. Tablet Servers perform that phase.
-
+Accumulo 4.0.0 also allows Scan Servers to perform the sorting phase of write-ahead log recovery to help enable faster Tablet recovery. The default `sserver.wal.sort.concurrent.max=2` permits two concurrent sorts; a value below one disables the work. When the write-ahead log recovery sorting phase is completed, the Tablet will be assigned to a Tablet Server to have the sorted mutations replayed. 
 
 ### File References and Graceful Shutdown
 
-In 2.1.0, Scan Server file references were stored in a section of the metadata table. Accumulo 4.0.0 stores them in the dedicated `accumulo.scanref` system table, reducing contention with ordinary metadata operations. Active reservations remain protected regardless of the value of `sserver.scan.reference.expiration`; that property controls how long a reference unused by its Scan Server is retained.
+In 2.1.0, Scan Server file references were stored in a section of the metadata table. Accumulo 4.0.0 stores them in the dedicated `accumulo.scanref` system table, reducing contention with ordinary metadata operations.
 
-The current graceful-shutdown path rejects new single and batch scans as busy, allows active scan sessions to drain, stops the RPC service, and removes the process's file references. References left by a failed server are eventually cleaned up, and administrators can invoke the cleanup utility when necessary:
+The current graceful-shutdown path rejects new single and batch scans as busy, allows active scan sessions to drain, stops the RPC service, and removes the process's file references. References left by a failed server are eventually cleaned up. Administrators can invoke the cleanup utility when necessary to remove references from dead Scan Server using the command:
 
 ```bash
-accumulo remove-scan-server-references
+accumulo inst remove-scan-server-references
 ```
-
-This command should be used to remove references owned by dead Scan Servers, not active processes.
 
 ### Offline-Table Compatibility
 
