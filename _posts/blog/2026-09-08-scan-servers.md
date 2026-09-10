@@ -217,7 +217,7 @@ A client profile still uses the `group` field, but that value now identifies a r
 
 ### Controlling Latency
 
-In 4.0.0 the property `table.compaction.minor.age` replaces `table.compaction.minor.idle`. The latter property only triggered a minor compaction when writes to the Tablet had stopped and the tablet was idle. The `minor.age` property now considers the oldest in-memory mutation for the tablet and triggers a minor compaction even with writes continuing.
+In 4.0.0 the property `table.compaction.minor.age` replaces `table.compaction.minor.idle`. The latter property only triggered a minor compaction when writes to the Tablet had stopped and the tablet was idle. The `minor.age` property now considers the oldest in-memory mutation for the tablet and triggers a minor compaction even with writes continuing. The `table.compaction.minor.age` has a default value of 10 minutes.
 
 ### Server Property Changes
 
@@ -255,7 +255,7 @@ accumulo inst remove-scan-server-references
 
 ### Offline-Table Compatibility
 
-Offline-table Scan Server support was added to the 2.1 line in Accumulo 2.1.5, but it is not available through the public client scanner APIs in the current 4.0.0-SNAPSHOT. In 4.0.0 users can set a tables availability to `NEVER` to achieve the same thing.
+Offline-table Scan Server support was added to the 2.1 line in Accumulo 2.1.5, but it is not available through the public client scanner APIs in the current 4.0.0-SNAPSHOT. In 4.0.0 users can set a tables availability to `UNHOSTED` to achieve the same thing.
 
 ## Upgrade Checklist
 
