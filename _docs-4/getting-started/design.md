@@ -181,7 +181,7 @@ created. See the [compaction documentation][compaction] for more information.
 ## Splitting
 
 When a table is created without split points it will have one tablet. As the table grows its initial
-tablet eventually splits into two tablets. It's likely that one of these
+tablet eventually splits into two tablets. If hosted, it's likely that one of these
 tablets will migrate to another tablet server. As the table continues to grow,
 its tablets will continue to split and be migrated. The decision to
 automatically split a tablet is based on the size of a tablets files. The
