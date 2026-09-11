@@ -25,11 +25,7 @@ process name referenced in this documentation.
 ## Setup for testing or development
 
 If you are setting up Accumulo for **testing or development,** consider using
-the following tools:
-
-* [Uno] sets up Accumulo on a single machine for development
-* [Muchos] sets up Accumulo on a cluster (optionally launched in Amazon EC2 and
-  Microsoft Azure VM)
+[Uno] to set up a single instance Accumulo cluster.
 
 If you are setting up Accumulo for a **production** environment, follow the
 instructions below.
@@ -291,6 +287,5 @@ When finished, use the following commands to stop Accumulo:
 [compactor]: {% durl configuration/files#compaction%20compactor %}
 [sserver]: {% durl configuration/files#sserver %}
 [Uno]: https://github.com/apache/accumulo-uno
-[Muchos]: https://github.com/apache/fluo-muchos
 [Erasure Coding]: https://hadoop.apache.org/docs/r3.2.0/hadoop-project-dist/hadoop-hdfs/HDFSErasureCoding.html
 [ec-guide]: {% durl administration/erasure-coding %}

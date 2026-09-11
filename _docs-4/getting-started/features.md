@@ -64,9 +64,9 @@ can share a pool of datanodes.
 ### Manager fail over
 
 Multiple managers can be configured.  Zookeeper locks are used to determine
-which manager is the primary manager.  The remaining managers simply wait for the current
-manager to lose its lock to take on the primary manager role.  Current manager state is held in the metadata table
-and Zookeeper.
+which manager is the primary manager.  The remaining managers will attempt to
+take on the primary manager role if the current primary manager loses its lock.
+Current manager state is held in the metadata table and Zookeeper.
 
 ### Logical time
 

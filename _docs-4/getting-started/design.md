@@ -65,7 +65,7 @@ shutdown and recovery of changes in write-ahead logs when Tablet servers fail.
 
 The Compaction Coordinator is a function that the primary Manager performs to coordinate
 the completion of major compactions using Compactor processes. The Coordinator is responsible
-for identifying what external compaction work needs to be done, and the Compactors
+for identifying what external compaction work needs to be done, and for communicating with the Compactors
 to assign work, get status updates, and cancel running external compactions.
 
 Multiple managers may be run concurrently. The managers will choose among themselves a single manager
@@ -93,12 +93,13 @@ at one time. Leader election will be performed internally to choose the active M
 The Accumulo Compactor process is an application that can be used to run compactions
 outside of the TabletServer. One to many Compactors can be run on a cluster and each Compactor
 process performs one compaction at a time. The Compactor registers its existence in ZooKeeper
-and communicates with the CompactionCoordinator in the primary Manager to retrieve its work and to register the
+and communicates with the Compaction Coordinator in the primary Manager to retrieve its work and to register the
 completion status of the compaction.
 
-Compactors also perform recovery of a tablet
-that was previously on a Tablet Server that failed, reapplying any writes
-found in the write-ahead log to the tablet.
+Compactors also perform the sorting phase of the write-ahead log recovery for tablets that were
+on a Tablet Server that failed. Once sorting completes, the tablet is assigned to a Tablet Server,
+which replays the sorted mutations. The Compactor looks for write-ahead log sorting work before
+requesting the next Major Compaction job.
 
 ### Scan Server
 
@@ -112,9 +113,10 @@ Tablet Server. The Scan Server does not have any of the Tablet data that may res
 in-memory maps and the tablet may reference files that have been compacted as tablet metadata can
 be cached within the Scan Server (See Scan Server configuration properties).
 
-Scan Servers also perform recovery of a tablet
-that was previously on a Tablet Server that failed, reapplying any writes
-found in the write-ahead log to the tablet.
+Scan Servers can also perform the sorting phase of the write-ahead log recovery for tablets that were
+on a Tablet Server that failed. Once sorting completes, the tablet is assigned to a Tablet Server,
+which replays the sorted mutations. The server property `sserver.wal.sort.concurrent.max` controls
+the number of threads in the Scan Server that will perform the write-ahead log sorting.
 
 ### Client
 
@@ -167,13 +169,14 @@ locality group. The diagram below shows the logical view and HDFS file view of a
 
 ## Compactions
 
-In order to manage the number of files per tablet, periodically the Manager will
-instruct a Compactor to perform a Major Compaction of files within a tablet, in which some set of RFiles
-are combined into one file. The previous files will eventually be removed by the
-Garbage Collector. This also provides an opportunity to permanently remove
-deleted key-value pairs by omitting key-value pairs suppressed by a delete entry
-when the new file is created. See the [compaction documentation][compaction]
-for more information.
+In order to manage the number of files per tablet the Manager will periodically
+identify the tablets that need a Major Compaction and will give the highest
+priority job to a Compactor process when it requests the next job. The Major
+Compaction will merge data from an input set of RFiles into a single output file.
+The previous files will eventually be removed by the Garbage Collector.
+This also provides an opportunity to permanently remove deleted key-value pairs
+by omitting key-value pairs suppressed by a delete entry when the new file is
+created. See the [compaction documentation][compaction] for more information.
 
 ## Splitting
 
