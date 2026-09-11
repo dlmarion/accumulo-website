@@ -62,7 +62,7 @@ Any questions/ideas don't hesitate to [contact us][contact].
 * Do not use Author Tags. The code is developed and owned by the community.
 * If you used Generative-AI to generate or assist in developing the change, then please be sure to:
     * Follow the guidelines at https://www.apache.org/legal/generative-tooling.html
-    * Add an `Assisted-By: <model>` or `Generated-By: <model>` in your commit message.
+    * Add a line near the end of your commit message containing `AI-Model-Used: <model>`.
 
 ## Helpful Links
 
